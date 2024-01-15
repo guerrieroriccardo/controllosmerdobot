@@ -1,0 +1,14 @@
+# Use a Node.js base image with a specific version
+FROM node:latest
+
+# Set the working directory inside the container
+WORKDIR /usr/src/app
+
+# Copy the contents of the local 'bot' directory to the container's working directory
+COPY ./bot /usr/src/app
+
+# Install dependencies if your bot requires any
+RUN npm install
+
+# Command to run your bot script (replace 'your_bot_script.js' with the actual file name)
+CMD ["node", "bot.js"]
