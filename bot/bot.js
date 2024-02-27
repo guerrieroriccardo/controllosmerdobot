@@ -8,7 +8,7 @@ require('dotenv').config();
 const token = process.env.botToken;
 
 // Replace 'YOUR_CHAT_ID' with the actual chat ID where you want to send the message
-const chatId = '-1002066742993';
+const chatId = process.env.chatId;
 
 // Create a bot that uses 'polling' to fetch new updates
 const bot = new TelegramBot(token, { polling: true });
@@ -61,8 +61,8 @@ bot.on('message', (msg) => {
     }
 });
 
-// Set the desired time for the daily message in cron syntax (here, 21:00 every day)
-cron.schedule('0 0 * * *', () => {
+// Daily summary
+cron.schedule('55 23 * * *', () => {
     let message = 'I cagoni di oggi: \n';
 
     // Acquire a connection from the pool
@@ -77,7 +77,8 @@ cron.schedule('0 0 * * *', () => {
             SELECT m.user_id, u.name, COUNT(*) AS messages_sent_today
             FROM messages m, users u
             WHERE m.user_id = u.user_id AND m.message_date = CURRENT_DATE
-            GROUP BY m.user_id;
+            GROUP BY m.user_id
+            ORDER BY messages_sent_today DESC;
             `;
 
         // Query to get the count of messages sent by each user yesterday
@@ -85,7 +86,8 @@ cron.schedule('0 0 * * *', () => {
             SELECT user_id, COUNT(*) AS messages_sent_yesterday
             FROM messages
             WHERE message_date = CURRENT_DATE - INTERVAL 1 DAY
-            GROUP BY user_id;
+            GROUP BY user_id
+            ORDER BY messages_sent_yesterday DESC;
             `;
 
         // Execute the query for today's data
@@ -95,51 +97,62 @@ cron.schedule('0 0 * * *', () => {
                 throw errorToday;
             }
 
-            // Execute the query for yesterday's data
-            connection.query(yesterdayQuery, (errorYesterday, resultsYesterday) => {
+            try {
+                // Execute the query for yesterday's data
+                connection.query(yesterdayQuery, (errorYesterday, resultsYesterday) => {
 
-                // Close the database connection
-                connection.release();
-
-                if (errorYesterday) {
-                    console.error('Error executing yesterday\'s query:', errorYesterday);
-                    throw errorYesterday;
-                }
-
-                // Process the results and calculate the percentage difference
-                resultsToday.forEach((rowToday) => {
-                    const user_id = rowToday.user_id;
-                    const user_name = rowToday.name;
-                    const messagesSentToday = rowToday.messages_sent_today;
-
-                    // Find the corresponding row in yesterday's results
-                    const rowYesterday = resultsYesterday.find((row) => row.user_id === user_id);
-
-                    if (rowYesterday) {
-                        const messagesSentYesterday = rowYesterday.messages_sent_yesterday;
-
-                        // Calculate the percentage difference
-                        const percentageDifference = ((messagesSentToday - messagesSentYesterday) / messagesSentYesterday) * 100;
-
-                        message += `- ${user_name} ha cagato ${messagesSentToday} volte. ${(percentageDifference > 0) ? '📈' : (percentageDifference < 0) ? '📉' : '🟰'}${percentageDifference}%.\n`
-
-                    } else {
-                        message += `- ${user_name} ha cagato ${messagesSentToday} volte. 📈100%.\n`
+                    if (errorYesterday) {
+                        console.error('Error executing yesterday\'s query:', errorYesterday);
+                        throw errorYesterday;
                     }
-                });
-                console.log(message);
 
-                // Send the message to the specified chat ID
-                bot.sendMessage(chatId, message)
-                    .then(() => console.log('Daily message sent successfully'))
-                    .catch(error => console.error('Error sending daily message:', error));
+                    // Process the results and calculate the percentage difference
+                    resultsToday.forEach((rowToday) => {
+                        const user_id = rowToday.user_id;
+                        const user_name = rowToday.name;
+                        const messagesSentToday = rowToday.messages_sent_today;
 
-            });
+                        // Find the corresponding row in yesterday's results
+                        const rowYesterday = resultsYesterday.find((row) => row.user_id === user_id);
+
+                        if (rowYesterday) {
+                            const messagesSentYesterday = rowYesterday.messages_sent_yesterday;
+
+                            // Calculate the percentage difference
+                            const percentageDifference = ((messagesSentToday - messagesSentYesterday) / messagesSentYesterday) * 100;
+
+                            message += `- ${user_name} ha 💩 ${messagesSentToday} ${(messagesSentToday == 1) ? 'volta' : 'volte'}. ${(percentageDifference > 0) ? '📈' : (percentageDifference < 0) ? '📉' : '🟰'}${percentageDifference}%.\n`
+
+                        } else {
+                            message += `- ${user_name} ha 💩 ${messagesSentToday} volte. 📈100%.\n`
+                        }
+                    });
+
+                    
+                    console.log(message);
+
+                    // Send the message to the specified chat ID
+                    bot.sendMessage(chatId, message)
+                        .then(() => console.log('Daily message sent successfully'))
+                        .catch(error => console.error('Error sending daily message:', error));
+                                    });
+            } catch (error) {
+                console.log(error);
+            }
+
         });
     });
-
+    // Close the database connection
+    connection.release();
 
 });
+
+// // Weekly summary
+// // possibili idee: classifica all time, numero di messaggi al giorno di media
+// cron.schedule('43 15 * * *', async () => {
+
+// });
+
 
 // Handle database errors
 pool.on('error', (err) => {
